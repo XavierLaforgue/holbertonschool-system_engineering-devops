@@ -1,0 +1,70 @@
+
+## Load Balancer Distribution Algorithm
+
+- **Round Robin (default):**
+	- HAProxy forwards each new connection to the next backend server in a circular order (A → B → C → A ...).
+	- Ensures even distribution of requests if servers have similar capacity.
+
+- **Alternatives:**
+	- Least Connections: Sends requests to the server with the fewest active connections.
+	- Source (hash): Consistently maps the same client IP to the same backend (useful for session affinity).
+	- Sticky sessions: Uses cookies to keep a client on the same backend for session duration.
+
+---
+
+## Active-Active vs Active-Passive Load Balancer Setup
+
+- **Active-Active:**
+	- Multiple load balancers run in parallel, sharing traffic.
+	- If one fails, others continue serving requests.
+	- Requires a shared virtual IP (VIP) or DNS round-robin.
+	- Higher throughput and availability.
+
+- **Active-Passive:**
+	- One load balancer is active; another is on standby.
+	- Standby takes over only if the active fails (failover via VRRP/keepalived).
+	- Simpler but less resource-efficient.
+
+- **Current Setup:**
+	- With a single HAProxy, the system is neither Active-Active nor Active-Passive. To avoid SPOF, deploy two LBs in either configuration.
+
+---
+
+## How a Database Primary-Replica (Master-Slave) Cluster Works
+
+- The Primary (Master) accepts all write operations and records changes in a binary log.
+- Replicas (Slaves) connect to the Primary and replay changes to stay synchronized.
+- Replication is usually asynchronous, so Replicas may lag behind the Primary.
+- On Primary failure, a Replica can be promoted to Primary (manual or automated).
+
+---
+
+## Primary vs Replica Node (Application Perspective)
+
+- **Primary:**
+	- Accepts both reads and writes.
+	- Always up-to-date; source of truth.
+
+- **Replica:**
+	- Read-only (for the application).
+	- May lag behind Primary (eventual consistency).
+	- Used to scale read queries and reduce load on Primary.
+
+- **Application Behavior:**
+	- All writes go to Primary.
+	- Reads can be split between Primary and Replicas, but must tolerate possible lag on Replicas.
+
+---
+
+## Issues with This Infrastructure
+
+- **Single Points of Failure (SPOF):**
+	- Single HAProxy: If it fails, the website is unreachable. Solution: deploy multiple LBs.
+	- Primary database: If it fails and no automated failover exists, writes stop. Solution: use automated failover tools.
+
+- **Security Issues:**
+	- No firewall: Servers may expose unnecessary ports. Solution: restrict access with firewalls/security groups.
+	- No HTTPS: Traffic is unencrypted. Solution: enable TLS on HAProxy and redirect HTTP to HTTPS.
+
+- **No Monitoring:**
+	- No visibility into server health, performance, or security events. Solution: deploy monitoring (Prometheus, Grafana), logging (ELK/EFK), and alerting (Alertmanager).

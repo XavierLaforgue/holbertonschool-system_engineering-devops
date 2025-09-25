@@ -9,8 +9,8 @@ The browser verifies if the domain is known by the local device (in cache or oth
 If not found, the browser sends a DNS query to resolve www.foobar.com to an IP address. 
 The DNS responds with the A record (8.8.8.8), the IP address corresponding to the requested domain.
 The browser connects to 8.8.8.8 on port 80 (HTTP) or 443 (HTTPS).
-The web server (Nginx) receives the request and serves static files or communicates with the application server to produce dynamic content.
-The application server uses the application files to execute the code required by the application's logic.
+The web server (Nginx) receives the request and serves static files and/or forwards the request to the application server (process running at a certain port) to produce dynamic content.
+The application server uses the application files to satisfy the application's logic.
 If necessary, the application server may read/write persistent data from/to the local database (MySQL).
 The application server sends back the necessary data to the web server (Nginx) and this returns a response to the user's browser (e.g., in the form of an html document).
 
@@ -20,7 +20,7 @@ High-level layout of a single-server (physical or virtual) architecture with pub
 
 - **DNS**
 	- Domain: foobar.com
-	- DNS A record: www.foobar.com, resolving to 8.8.8.8
+	- DNS A record: `www.foobar.com`, resolving to 8.8.8.8
 - **Server (IPv4 8.8.8.8)**
 	- Web server (Nginx)
 	- Application server (e.g., Python)
@@ -43,7 +43,7 @@ High-level layout of a single-server (physical or virtual) architecture with pub
 	Its role is to accept HTTP(S) connections, serve static files (e.g., HTML, images), and transmit requests to the application server for dynamic content.
 
 - **What is the role of the application server?**
-	The application server is charged with managing the application logic (including interacting with the database), i.e., running the backend code.
+	The application server is the process charged with the application logic (including interacting with the database), i.e., running the backend code.
 
 - **What is the role of the database (MySQL)?**
 	Stores all data that needs to persist between connections.
