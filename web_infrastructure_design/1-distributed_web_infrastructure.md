@@ -55,38 +55,30 @@ High-level layout of a three-server (physical or virtual) architecture using a l
 
 ### Load balancer distribution algorithm
 
+There are several distribution algorithm we could use, the most common one is: Round Robin.
+Using Round Robin: HAproxy keeps track of the server it has last sent a request to and forwards the next connection to the next server in the list of available ones. 
+This distributes the number of connections equally among the servers, leading to even loads over time if the servers are identical and the requests all require about the same computational ressources.
 
+Noteworthy alternatives are:
+- Least Connections algorithm: it tracks the number of active connections and forwards new requests to the server with the fewest.
+- Cookie-based sticky sessions algorithm: using cookies, the load-balancer can guarantee that each subsequent request from a client will be forwarded to the same server.
 
-Recommended default: Round Robin
-- How it works: HAProxy forwards each new connection to the next backend in the list (A -> B -> C -> A ...). This evens out traffic over time assuming equal server capacity.
+### Active-Active vs Active-Passive load-balancer setups
 
-When to choose alternatives:
-- Least Connections: choose this when requests are long-lived or uneven in cost — it forwards to the backend with the fewest active connections.
-- Source (hash): consistent routing by client IP. Useful for simple affinity (if no shared session store is available).
-- Cookie-based sticky sessions: HAProxy can inject a cookie so subsequent requests from the same client return to the same backend.
+The current architecture is not enabling either setup since it only contains a single load-balancer.
 
-Notes:
-- For truly stateless apps, avoid sticky sessions and use a shared session store (Redis) or token-based auth.
-- Consider health checks (HTTP checks against /health) so HAProxy can detect unhealthy backends and stop routing to them.
+| Feature / Setup | Active-Active | Active-Passive |
+|-----------------|---------------|----------------|
+| Nº of active load-balancers | Multiple | One |
+| Traffic distribution | Shared among all load-balancers | Only active load-balancer serves traffic (others remain on standby) |
+| Failover | Healthy load-balancer(s) continue handling traffic, load is distributed among them | Passive load-balancer takes charge on failure (of the previously active load-balancer) |
+| Complexity | Higher (synchronization of information among load-balancers) | Lower (simpler to setup) |
+| Resource Utilization | Efficient (all load-balancers' resources are available and ready to be used) | Less resource-efficient (standby load-balancers = idle = wasted resources) |
+| Availability | Higher (multiple load-abalancers guarantee requests) | Good (the active load-balancer needs to fail before one in standby can become available) |
+| Implementation | DNS round-robin (DNS returns multiple IPs for the same domain, each referring to a different load-balancer) or VIP (multiple load-balancers, same IP, using VRRP/keepalived) | VRRP/keepalived to assign the VIP to a standby server after failure |
+| Session Handling | Sticky sessions (in-memory: cookies) or shared session storage (redis) | Perhaps also sticky sessions |
 
-## Active-Active vs Active-Passive Load Balancer setups
-
-- Active-Active:
-  - Multiple load balancer instances are active at the same time and share traffic.
-  - Requires a frontend mechanism (DNS round-robin, anycast, or a virtual IP shared via keepalived) to distribute incoming traffic among LBs.
-  - Benefits: higher capacity, no single LB becomes a bottleneck, better availability.
-  - More complex to manage (state synchronization, session affinity considerations).
-
-- Active-Passive:
-  - One LB is active and serves all traffic. A second LB is passive and takes over only if the active one fails (failover via VRRP/keepalived).
-  - Simpler and easy to reason about; passive node is idle until failover.
-  - Wasteful of resources but straightforward to implement.
-
-Current doc: describes a single HAProxy (single active instance). To remove LB SPOF you should deploy either:
-- Two HAProxy instances in Active-Active with a VIP or DNS strategy; or
-- Two HAProxy instances in Active-Passive coordinated via keepalived (VRRP).
-
-## How Primary-Replica (Master-Slave) MySQL works
+### How Primary-Replica (Master-Slave) MySQL works
 
 - Primary (Master) takes all write operations (INSERT/UPDATE/DELETE) and records changes in a binary log (binlog).
 - Replicas (Slaves) connect to the Primary and read the binlog events, replaying them locally to reproduce the Primary's state.
@@ -95,7 +87,7 @@ Current doc: describes a single HAProxy (single active instance). To remove LB S
   - Semi-synchronous: Primary waits for acknowledgement from at least one Replica before reporting commit success — reduces chance of data loss but increases write latency.
 - Failover: if the Primary fails, one Replica can be promoted to Primary. Promotion can be manual or automated via tools (Orchestrator, MHA, or custom scripts). After promotion, former Primary must be re-added as a Replica.
 
-## Primary vs Replica from the application's perspective
+### Primary vs Replica from the application's perspective
 
 - Primary:
   - Accepts writes and reads.
@@ -113,7 +105,7 @@ Application responsibilities:
 
 ## Issues with this infrastructure
 
-- Single Points of Failure (SPOF):
+- **Single Points of Failure (SPOF):**
   - Single HAProxy instance: if the load balancer fails, clients cannot reach the backend servers. Mitigation: add a second LB and configure Active-Active or Active-Passive topology.
   - Primary database: if the Primary fails and you lack automated failover, writes stop. Mitigation: use automated failover tools and keep regular backups.
 
