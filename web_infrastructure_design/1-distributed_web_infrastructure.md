@@ -78,7 +78,12 @@ The current architecture is not enabling either setup since it only contains a s
 | Implementation | DNS round-robin (DNS returns multiple IPs for the same domain, each referring to a different load-balancer) or VIP (multiple load-balancers, same IP, using VRRP/keepalived) | VRRP/keepalived to assign the VIP to a standby server after failure |
 | Session Handling | Sticky sessions (in-memory: cookies) or shared session storage (redis) | Perhaps also sticky sessions |
 
-### How Primary-Replica (Master-Slave) MySQL works
+### How a database (MySQL) Primary-Replica (Master-Slave) cluster works
+
+<div style="background: #f30808ff; border: 2px solid #3c0202ff; padding: 1em; text-align: center; font-size: 1.5em;">
+<strong>⚠️ REVIEW NEEDED BELOW THIS POINT ⚠️</strong><br>
+Everything below this line requires review and may be incomplete or unverified.
+</div>
 
 - Primary (Master) takes all write operations (INSERT/UPDATE/DELETE) and records changes in a binary log (binlog).
 - Replicas (Slaves) connect to the Primary and read the binlog events, replaying them locally to reproduce the Primary's state.
