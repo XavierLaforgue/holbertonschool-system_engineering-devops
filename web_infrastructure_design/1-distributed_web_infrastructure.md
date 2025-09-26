@@ -1,6 +1,6 @@
 # Distributed web infrastructure
 
-![Distributed Web Infrastructure Diagram](./1-distributed_web_infrastructure_v1.svg)
+![Distributed Web Infrastructure Diagram](./1-distributed_web_infrastructure_v2.svg)
 
 ## User story
 
@@ -17,7 +17,7 @@
 10. The application server sends back the necessary data to the web server (Nginx).
 11. The web server returns the response to the load-balancer and this returns a response to the user's browser (e.g., in the form of an html document).
 
-## Architecture (three-server + HAProxy infrastructure)
+## Architecture (three-server + HAproxy infrastructure)
 
 High-level layout of a three-server (physical or virtual) architecture using a load-balancer with public IP address 8.8.8.8:
 

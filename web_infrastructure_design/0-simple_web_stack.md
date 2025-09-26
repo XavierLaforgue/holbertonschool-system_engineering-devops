@@ -1,6 +1,6 @@
 # Simple web infrastructure
 
-![Simple Web Infrastructure Diagram](./0-simple_web_stack.drawio_v4.svg)
+![Simple Web Infrastructure Diagram](./0-simple_web_stack.drawio_v5.svg)
 
 ## User story
 
