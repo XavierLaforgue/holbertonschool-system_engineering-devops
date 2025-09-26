@@ -67,61 +67,59 @@ Noteworthy alternatives are:
 
 The current architecture is not enabling either setup since it only contains a single load-balancer.
 
-| Feature / Setup | Active-Active | Active-Passive |
-|-----------------|---------------|----------------|
-| Nº of active load-balancers | Multiple | One |
-| Traffic distribution | Shared among all load-balancers | Only active load-balancer serves traffic (others remain on standby) |
-| Failover | Healthy load-balancer(s) continue handling traffic, load is distributed among them | Passive load-balancer takes charge on failure (of the previously active load-balancer) |
-| Complexity | Higher (synchronization of information among load-balancers) | Lower (simpler to setup) |
-| Resource Utilization | Efficient (all load-balancers' resources are available and ready to be used) | Less resource-efficient (standby load-balancers = idle = wasted resources) |
-| Availability | Higher (multiple load-abalancers guarantee requests) | Good (the active load-balancer needs to fail before one in standby can become available) |
-| Implementation | DNS round-robin (DNS returns multiple IPs for the same domain, each referring to a different load-balancer) or VIP (multiple load-balancers, same IP, using VRRP/keepalived) | VRRP/keepalived to assign the VIP to a standby server after failure |
-| Session Handling | Sticky sessions (in-memory: cookies) or shared session storage (redis) | Perhaps also sticky sessions |
-
+| Feature / Setup             | Active-Active | Active-Passive |
+|-----------------------------|---------------|----------------|
+| Nº of active load-balancers | Multiple      | One            |
+| Traffic distribution        | Shared among all load-balancers | Only active load-balancer serves traffic (others remain on standby) |
+| Failover                    | Healthy load-balancer(s) continue handling traffic, load is distributed among them | Passive load-balancer takes charge on failure (of the previously active load-balancer) |
+| Complexity                  | Higher (synchronization of information among load-balancers) | Lower (simpler to setup) |
+| Resource usage              | Efficient (all load-balancers' resources are available and ready to be used) | Less resource-efficient (standby load-balancers = idle = wasted resources) |
+| Availability                | Higher (multiple load-abalancers guarantee requests) | Good (the active load-balancer needs to fail before one in standby can become available) |
+| Implementation              | DNS round-robin (DNS returns multiple IPs for the same domain, each referring to a different load-balancer) or VIP (multiple load-balancers, same IP, using VRRP/keepalived) | VRRP/keepalived to assign the VIP to a standby server after failure |
+| Session Handling            | Sticky sessions (in-memory: cookies) or shared session storage (redis) | Perhaps also sticky sessions |
+------------------------------------------------
 ### How a database (MySQL) Primary-Replica (Master-Slave) cluster works
 
-<div style="background: #f30808ff; border: 2px solid #3c0202ff; padding: 1em; text-align: center; font-size: 1.5em;">
-<strong>⚠️ REVIEW NEEDED BELOW THIS POINT ⚠️</strong><br>
-Everything below this line requires review and may be incomplete or unverified.
-</div>
+The purpose of the cluster is to increase availability of the database and reduce wait time of database queries as they may be better distributed among the members of the cluster.
 
-- Primary (Master) takes all write operations (INSERT/UPDATE/DELETE) and records changes in a binary log (binlog).
-- Replicas (Slaves) connect to the Primary and read the binlog events, replaying them locally to reproduce the Primary's state.
-- Replication modes:
-  - Asynchronous: Replicas apply changes after the Primary commits; this can cause replication lag.
-  - Semi-synchronous: Primary waits for acknowledgement from at least one Replica before reporting commit success — reduces chance of data loss but increases write latency.
-- Failover: if the Primary fails, one Replica can be promoted to Primary. Promotion can be manual or automated via tools (Orchestrator, MHA, or custom scripts). After promotion, former Primary must be re-added as a Replica.
+The primary database instance, or master, is the sole responsible for (and allowed to perform) user requested write operations (insertions, modificatuons, deletions).
+Once write operations are performed, the primary database records it in a binary log (binlog) that is shared with the replicas.
 
-### Primary vs Replica from the application's perspective
+The database replicas, or slaves, access the binlog in the primary database and reproduce the operations locally to synchronize their states.
+There are a few ways replication can be setup, the main ones are: 
+- Asynchronously: primary performs operation and returns success, replicas perform it later, replication lag is possible.
+- Semi-synchronously: primary performs operation and awaits confirmation of success from at least one replica before returning success, increased database consistency but higher latency.
+- Synchronously: primary performs operation and awaits confirmation from all replicas before returning success, maximum consistency but highest latency.
 
-- Primary:
-  - Accepts writes and reads.
-  - Provides the most up-to-date data.
-  - Recommended for write operations and for reads that require the latest data.
+In case of failure on the part of the primary, a replica may be promoted to primary.
+If a replica fails the site remains operational via the other cluster members.
 
-- Replica:
-  - Typically read-only (or treated as such by the application).
-  - Serves read-only queries and reduces Primary load.
-  - May lag behind the Primary (eventual consistency). Applications must tolerate stale reads if using replicas immediately after writes.
+### Primary node vs Replica node in regards to the application
 
-Application responsibilities:
-- Route all write queries to the Primary.
-- Optionally route read queries to Replicas (read-scaling) while handling possible replication lag (e.g., reading after writes should go to Primary or ensure replica has caught up).
+User-requested write operations are always sent to the primary node.
+User-requested read operations are distributed among the replicas as to increase availability of the primary.
+
+|Feature / Node type | Primary         | Replicas                     |
+|--------------------|-----------------|------------------------------|
+| Operations         | reads/writes    | reads only                   |
+| Usage              | write operations and necessarily up-to-date reads | relieve read load off the primary |
+| Purpose            | source of truth | scale read queries           |
+| Consistency        | up to date      | may lag behind the primary   |
+----------------------------------------------------------------------
+
+The application must, therefore, route queries approppriately to the primary or replica nodes:
+- All writes to the primary.
+- Reads distributed among primary and replica depending on tolerance to possible consistency lag.
 
 ## Issues with this infrastructure
 
-- **Single Points of Failure (SPOF):**
-  - Single HAProxy instance: if the load balancer fails, clients cannot reach the backend servers. Mitigation: add a second LB and configure Active-Active or Active-Passive topology.
-  - Primary database: if the Primary fails and you lack automated failover, writes stop. Mitigation: use automated failover tools and keep regular backups.
+- **Single Points Of Failure (SPOF):**
+  The main single point of failure is the reliance on a single load-balancer through which all traffic is directed (if the load-balancer crashes the site is unreachable).
+  Another one could be the primary node of the database cluster (if the promotion of replicas to primary is not properly automated, a crashed primary will cause the site to fail all writes).
 
-- Security issues:
-  - No firewall rules described: servers might expose management ports (SSH, DB) to the public. Mitigation: use security groups and host firewalls (ufw/iptables), restrict access to known admin IPs.
-  - No HTTPS/TLS by default: traffic is unencrypted. Mitigation: terminate TLS on HAProxy (recommended) using certificates from a CA (Let's Encrypt) and automate renewal.
-  - No rate-limiting or WAF: the stack is exposed to abuse and simple attacks. Mitigation: configure HAProxy limits and consider a WAF or CDN.
+- **Security issues:**
+  The absence of firewalls may leave ports exposed to the public, which may risk the privacy and integrity of database.
+  As a secured communication method (HTTPS/TLS) has not been enforced, traffic is not encrypted and may be read (spied on) by outsiders with possible malicious intent.
 
-- Observability and monitoring:
-  - No monitoring or alerting: you won't be notified of failures or performance problems. Mitigation: deploy Prometheus + node_exporter + MySQL exporter + Grafana + Alertmanager and log aggregation (ELK/EFK).
-
-- Operational concerns:
-  - Session state: if the app stores session state in-process, load balancing without sticky sessions will break sessions. Use Redis for sessions or enable sticky sessions.
-  - Configuration drift: multiple backend servers must be kept in sync (use configuration management: Ansible, Chef, Puppet, or container images).
+- **Monitoring:**
+  The absence of monitoring tools means that crashes (downtime), performance issues, or security violations may occur unnoticed.
